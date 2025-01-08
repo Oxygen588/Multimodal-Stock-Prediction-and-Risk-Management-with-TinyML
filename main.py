@@ -1,7 +1,16 @@
 import yfinance as yf
+from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd
+import json
 import sqlite3
+
+db = sqlite3.connect("fintime.db", check_same_thread=False)
+cursor = db.cursor()
+cursor.execute("CREATE TABLE IF NOT EXISTS symbolsDone (symbol TEXT PRIMARY KEY)")
+cursor.execute("CREATE TABLE IF NOT EXISTS stockData (id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT, date TEXT, dataJSON TEXT)")
+db.commit()
 
 def convert_to_number(value):
     multipliers = {'B': 1_000_000_000, 'M': 1_000_000, 'T': 1_000_000_000_000, 'K': 1_000}
@@ -73,10 +82,50 @@ def get_comp_desc(stock_ticker):
         print("No description found.")
         return None
 
+def get_historical_stock_details(ticker, date):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(start=(datetime.strptime(date, "%m/%d/%Y") - timedelta(days=85)),
+                         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=85)))
+    if hist.empty:
+        return None
+    hist.reset_index(inplace=True)
+    hist['Date'] = hist['Date'].dt.strftime('%Y-%m-%d')
+    return hist
 
-stock_ticker = "MAIN"
+def get_price(ticker, date):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(start=datetime.strptime(date, "%m/%d/%Y"),
+                         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=3)))
+    if hist.empty:
+        print(f"No data available for {date}")
+        return None
+    return (hist['High'].max() + hist['Low'].min()) / 2
 
-stats = get_ibm_key_statistics("MAIN")
-print(stats)
-desc = get_comp_desc("MAIN")
-print(desc)
+def process_stock(stock_ticker):
+    company_desc = get_comp_desc(stock_ticker)
+    stock_datas = get_ibm_key_statistics(stock_ticker)
+    if not stock_datas:
+        print(f"Skipping {stock_ticker} due to missing statistics.")
+        return
+    for date, stats in stock_datas.items():
+        if date in ["extra_stats", "Current"]:
+            continue
+        hist = get_historical_stock_details(stock_ticker, date)
+        if hist is None:
+            print(f"No historical data for {stock_ticker} on {date}")
+            return
+        stock_data = {
+            "hist": hist.to_dict(orient="records"),
+            "current_price": get_price(stock_ticker, date),
+            "stats": stats,
+            "company_description": company_desc
+        }
+        cursor.execute("INSERT INTO stockData (ticker, date, dataJSON) VALUES (?, ?, ?)",
+                       (stock_ticker, date, json.dumps(stock_data)))
+        db.commit()
+    cursor.execute("INSERT OR IGNORE INTO symbolsDone (symbol) VALUES (?)", (stock_ticker,))
+    db.commit()
+
+
+stock_ticker = "IBM"
+process_stock(stock_ticker)
