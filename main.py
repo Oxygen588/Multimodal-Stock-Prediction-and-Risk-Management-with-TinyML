@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 db = sqlite3.connect("fintime.db", check_same_thread=False)
 cursor = db.cursor()
@@ -127,5 +128,7 @@ def process_stock(stock_ticker):
     db.commit()
 
 
-stock_ticker = "IBM"
-process_stock(stock_ticker)
+stock_tickers = ["IBM", "MAIN"]
+with ThreadPoolExecutor(max_workers=2) as executor:
+    executor.map(process_stock, stock_tickers)
+
