@@ -20,10 +20,22 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-db = sqlite3.connect("fintime.db", check_same_thread=False)
+
+db = sqlite3.connect("fintime.db",check_same_thread=False)
 cursor = db.cursor()
-cursor.execute("CREATE TABLE IF NOT EXISTS symbolsDone (symbol TEXT PRIMARY KEY)")
-cursor.execute("CREATE TABLE IF NOT EXISTS stockData (id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT, date TEXT, dataJSON TEXT)")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS symbolsDone (
+        symbol TEXT PRIMARY KEY
+    )
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS stockData (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT,
+        date TEXT,
+        dataJSON TEXT
+    )
+""")
 db.commit()
 
 def load_symbols_done():
@@ -52,7 +64,7 @@ driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), opti
 print("Driver created")
 
 def convert_to_number(value):
-    multipliers = {'B': 1_000_000_000, 'M': 1_000_000, 'T': 1_000_000_000_000, 'K': 1_000}
+    multipliers = {'B': 1_000_000_000, 'M': 1_000_000, 'T': 1_000_000_000_000, 'K': 1_000, 'k': 1_000}
     if value == '--':
         return None
     try:
@@ -75,8 +87,6 @@ def print_statistics_nicely(headers, rows):
             statistics[date][label] = convert_to_number(value)
     return statistics
 
-def get_ibm_key_statistics(stock_ticker):
-    url = f"https://finance.yahoo.com/quote/{stock_ticker}/key-statistics"
 def get_key_statistics(stock_ticker):
     url = "https://finance.yahoo.com/quote/" + stock_ticker + "/key-statistics"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -87,8 +97,6 @@ def get_key_statistics(stock_ticker):
     soup = BeautifulSoup(response.text, 'html.parser')
     stat_section = soup.find("section", {"data-testid": "qsp-statistics"})
     if not stat_section:
-        print("No statistics section found.")
-        return None
         raise Exception("Failed to retrieve page")
         return
     table = stat_section.find("table", class_="table yf-kbx2lo")
@@ -126,8 +134,6 @@ def get_key_statistics(stock_ticker):
     main_stats["extra_stats"] = extra_stats
     return main_stats
 
-def get_comp_desc(stock_ticker):
-    url = f"https://finance.yahoo.com/quote/{stock_ticker}/profile"
 def get_comp_desc(c):
     url = "https://finance.yahoo.com/quote/"+c+"/profile"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -138,8 +144,6 @@ def get_comp_desc(c):
     soup = BeautifulSoup(response.text, 'html.parser')
     stat_section = soup.find("section", {"data-testid": "description"})
     if not stat_section:
-        print("No description section found.")
-        return None
         print("No statistics section found.")
         return
     desc_tag = stat_section.find("p")
@@ -165,8 +169,8 @@ def get_comp_desc(c):
 
 def get_historical_stock_details(ticker, date):
     stock = yf.Ticker(ticker)
-    hist = stock.history(start=(datetime.strptime(date, "%m/%d/%Y") - timedelta(days=85)),
-                         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=85)))
+    hist = stock.history(
+        start=(datetime.strptime(date, "%m/%d/%Y") - timedelta(days=85)),
         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=85))
     )
     if hist.empty:
@@ -177,8 +181,8 @@ def get_historical_stock_details(ticker, date):
 
 def get_price(ticker, date):
     stock = yf.Ticker(ticker)
-    hist = stock.history(start=datetime.strptime(date, "%m/%d/%Y"),
-                         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=3)))
+    hist = stock.history(
+        start=datetime.strptime(date, "%m/%d/%Y"),
         end=(datetime.strptime(date, "%m/%d/%Y") + timedelta(days=3))
     )
     if hist.empty:
